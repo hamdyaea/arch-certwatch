@@ -1,0 +1,19 @@
+# arch-certwatch configuration file
+# paths: list of directories or files to scan
+paths:
+  - /etc/ssl
+  - /etc/nginx/ssl
+  - /etc/apache2/ssl
+
+# extensions: which file extensions to consider
+extensions:
+  - .crt
+  - .pem
+  - .cer
+
+# warn_days: threshold in days to consider certificate "near expiry"
+warn_days: 30
+
+# follow_symlinks: whether to follow symlinked files
+follow_symlinks: true
+
