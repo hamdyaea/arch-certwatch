@@ -1,12 +1,20 @@
+# Developer: Hamdy Abou El Anein
+# Contact: hamdy.aea@protonmail.com
+# SPDX-License-Identifier: GPL-3.0-or-later
 [Unit]
 Description=Certificate Expiration Watchdog
-After=network.target
+After=local-fs.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/arch-certwatch --config /etc/arch-certwatch/config.yaml
+# Daemon mode is required: without --daemon the process exits after one scan.
+ExecStart=/usr/bin/arch-certwatch --config /etc/arch-certwatch/config.yaml --daemon --interval 60
 Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
 
 [Install]
 WantedBy=multi-user.target
-

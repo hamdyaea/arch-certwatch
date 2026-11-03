@@ -7,8 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"gopkg.in/yaml.v3"
-	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -37,7 +35,7 @@ func loadConfig(path string) (*Config, error) {
 		FollowSymlinks: true,
 	}
 
-	b, err := ioutil.ReadFile(path)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// return default config when no file found
@@ -124,24 +122,12 @@ func scanPath(path string, cfg *Config) ([]CertInfo, error) {
 			return nil
 		}
 
-		var data []byte
-		if cfg.FollowSymlinks {
-			// read file following symlinks
-			data, err = ioutil.ReadFile(p)
-		} else {
-			// read without following symlink: open file and check
-			f, errOpen := os.Open(p)
-			if errOpen != nil {
-				return nil
-			}
-			defer f.Close()
-			// if it's a symlink skip
-			fi, _ := f.Stat()
-			if fi.Mode()&os.ModeSymlink != 0 {
-				return nil
-			}
-			data, err = io.ReadAll(f)
+		// Walk supplies the lstat mode; os.File.Stat follows symlinks and
+		// therefore cannot be used to enforce FollowSymlinks=false.
+		if !cfg.FollowSymlinks && info.Mode()&os.ModeSymlink != 0 {
+			return nil
 		}
+		data, err := os.ReadFile(p)
 		if err != nil {
 			log.Printf("warning: failed to read %s: %v", p, err)
 			return nil
@@ -183,6 +169,7 @@ func runOnce(cfg *Config, notify bool) int {
 	now := time.Now()
 	exitCode := 0
 	var warnings []string
+	usablePaths := 0
 
 	for _, p := range cfg.Paths {
 		info, err := os.Stat(p)
@@ -190,6 +177,7 @@ func runOnce(cfg *Config, notify bool) int {
 			log.Printf("path %s: %v", p, err)
 			continue
 		}
+		usablePaths++
 		if !info.IsDir() {
 			// if user provided a file path, scan it directly
 			certs, err := scanPath(p, cfg)
@@ -226,6 +214,10 @@ func runOnce(cfg *Config, notify bool) int {
 		}
 	}
 
+	if usablePaths == 0 {
+		log.Println("UNKNOWN: none of the configured certificate paths could be accessed")
+		return 3
+	}
 	if notify && len(warnings) > 0 {
 		// join a short message and send to systemd
 		short := fmt.Sprintf("arch-certwatch: %d certificate(s) nearing expiry", len(warnings))
@@ -270,6 +262,10 @@ func main() {
 		os.Exit(code)
 	}
 
+	// Reject zero/negative intervals to avoid a busy-loop hammering the disk.
+	if intervalMin < 1 {
+		log.Fatal("--interval must be at least 1 minute")
+	}
 	// daemon mode
 	interval := time.Duration(intervalMin) * time.Minute
 	log.Printf("running in daemon mode, interval=%s", interval)
@@ -278,4 +274,3 @@ func main() {
 		time.Sleep(interval)
 	}
 }
-
